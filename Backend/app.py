@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://deepikamorla01.github.io"])
 SECRET = os.environ.get("JWT_SECRET_KEY", "workeval_secret_key_2024")
 DB     = os.environ.get("DB_NAME", "workeval.db")
 

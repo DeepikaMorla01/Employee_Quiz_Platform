@@ -17,6 +17,9 @@ CORS(app, origins=[
 
 SECRET = os.environ.get("JWT_SECRET_KEY", "workeval_secret_key_2024")
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# Render gives postgres:// but psycopg2 needs postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # ─── DB ABSTRACTION ───────────────────────────────────────────────────────────
 # Supports PostgreSQL (Render) and SQLite (local) transparently.

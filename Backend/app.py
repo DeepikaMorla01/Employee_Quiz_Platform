@@ -520,7 +520,7 @@ def ai_feedback():
 
 if __name__ == "__main__":
     init_db()
-    port  = int(os.environ.get("FLASK_PORT", 5000))
+    port = int(os.environ.get("PORT", int(os.environ.get("FLASK_PORT", 5000))))
     debug = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
     print(f"WorkEval backend running on http://localhost:{port}")
-    app.run(debug=debug, port=port)
+    app.run(debug=False, host="0.0.0.0", port=port)

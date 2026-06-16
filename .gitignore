@@ -1,0 +1,18 @@
+# ── SECRET FILES — never commit these ────────────────────────────────────────
+Backend/.env
+Backend/anthropic_key.txt
+Backend/workeval.db
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+venv/
+.venv/
+*.egg-info/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

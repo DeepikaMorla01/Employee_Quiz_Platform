@@ -206,6 +206,19 @@ def require_admin(f):
         return f(*args, **kwargs)
     return decorated
 
+# ─── HEALTH CHECK ────────────────────────────────────────────────────────────
+
+@app.route("/health", methods=["GET"])
+def health():
+    try:
+        conn = get_db(); cur = conn.cursor()
+        cur.execute("SELECT 1")
+        conn.close()
+        return jsonify({"status": "ok", "db": "postgresql" if USE_POSTGRES else "sqlite", "url_set": bool(DATABASE_URL)})
+    except Exception as e:
+        import traceback
+        return jsonify({"status": "error", "error": str(e), "trace": traceback.format_exc()}), 500
+
 # ─── AUTH ROUTES ──────────────────────────────────────────────────────────────
 
 @app.route("/register", methods=["POST"])
@@ -455,20 +468,25 @@ def delete_result(result_id):
 @app.route("/admin/create-quiz", methods=["POST"])
 @require_admin
 def create_quiz():
-    d = request.json
-    title = d.get("title","").strip()
-    description = d.get("description","").strip()
-    if not title:
-        return jsonify({"error":"Title required"}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute(f"INSERT INTO quizzes (title,description) VALUES ({Q},{Q})", (title, description))
-    if USE_POSTGRES:
-        cur.execute("SELECT lastval()")
-        quiz_id = cur.fetchone()[0]
-    else:
-        quiz_id = cur.lastrowid
-    conn.commit(); conn.close()
-    return jsonify({"quiz_id": quiz_id, "message":"Quiz created"})
+    try:
+        d = request.json
+        title = d.get("title","").strip()
+        description = d.get("description","").strip()
+        if not title:
+            return jsonify({"error":"Title required"}), 400
+        conn = get_db(); cur = conn.cursor()
+        cur.execute(f"INSERT INTO quizzes (title,description) VALUES ({Q},{Q})", (title, description))
+        if USE_POSTGRES:
+            cur.execute("SELECT lastval()")
+            quiz_id = cur.fetchone()[0]
+        else:
+            quiz_id = cur.lastrowid
+        conn.commit(); conn.close()
+        return jsonify({"quiz_id": quiz_id, "message":"Quiz created"})
+    except Exception as e:
+        import traceback
+        print("[create-quiz ERROR]", traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/admin/save-quiz", methods=["POST"])
 @require_admin

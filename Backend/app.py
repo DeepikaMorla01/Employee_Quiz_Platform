@@ -486,11 +486,11 @@ def create_quiz():
         if not title:
             return jsonify({"error":"Title required"}), 400
         conn = get_db(); cur = conn.cursor()
-        cur.execute(f"INSERT INTO quizzes (title,description) VALUES ({Q},{Q})", (title, description))
         if USE_POSTGRES:
-            cur.execute("SELECT lastval()")
-            quiz_id = cur.fetchone()[0]
+            cur.execute("INSERT INTO quizzes (title,description) VALUES (%s,%s) RETURNING id", (title, description))
+            quiz_id = cur.fetchone()["id"]
         else:
+            cur.execute("INSERT INTO quizzes (title,description) VALUES (?,?)", (title, description))
             quiz_id = cur.lastrowid
         conn.commit(); conn.close()
         return jsonify({"quiz_id": quiz_id, "message":"Quiz created"})

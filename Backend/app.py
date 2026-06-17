@@ -208,6 +208,16 @@ def require_admin(f):
 
 # ─── HEALTH CHECK ────────────────────────────────────────────────────────────
 
+@app.route("/init-db", methods=["GET"])
+def init_db_route():
+    try:
+        init_db()
+        return jsonify({"status": "ok", "message": "Database initialized successfully"})
+    except Exception as e:
+        import traceback
+        return jsonify({"status": "error", "error": str(e), "trace": traceback.format_exc()}), 500
+
+
 @app.route("/health", methods=["GET"])
 def health():
     try:
@@ -469,6 +479,7 @@ def delete_result(result_id):
 @require_admin
 def create_quiz():
     try:
+        init_db()  # ensure tables exist
         d = request.json
         title = d.get("title","").strip()
         description = d.get("description","").strip()
@@ -572,7 +583,20 @@ def ai_feedback():
     return Response(stream_with_context(generate()), mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
+# ─── STARTUP ─────────────────────────────────────────────────────────────────
+# This runs when the module is imported (works with both flask run and gunicorn)
+try:
+    init_db()
+    print("[startup] Database initialized successfully")
+except Exception as _e:
+    print(f"[startup] DB init warning: {_e}")
+
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
+
+@app.before_request
+def ensure_db():
+    """Initialize DB tables on first request if not already done."""
+    pass  # init_db called at startup below
 
 if __name__ == "__main__":
     init_db()

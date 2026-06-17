@@ -142,10 +142,15 @@ async function createQuizAndEdit() {
       method: 'POST', headers: h(),
       body: JSON.stringify({ title, description })
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Server error ' + res.status);
+    }
     const data = await res.json();
+    if (!data.quiz_id) throw new Error('No quiz_id returned');
     closeModal();
     editQuiz(data.quiz_id);
-  } catch (e) { alert('Failed to create quiz.'); }
+  } catch (e) { alert('Failed to create quiz: ' + e.message); }
 }
 
 async function editQuiz(quizId) {

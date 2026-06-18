@@ -60,6 +60,8 @@ function scoreColor(score) {
 
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
 
+let adminScoreChart = null, adminPerfChart = null;
+
 async function loadDashboard() {
   try {
     const [statsRes, recentRes] = await Promise.all([
@@ -77,6 +79,45 @@ async function loadDashboard() {
     animateCount('k-emp', stats.total_employees || 0);
     animateCount('k-quiz', stats.total_quizzes || 0);
     animateCount('k-att', stats.total_attempts || 0);
+
+    // ── Analytics Charts ───────────────────────────────────────────────────
+    const results = recentData.results || [];
+    if (results.length > 0) {
+      // Score trend — last 10 submissions sorted by date
+      const sorted = [...results].sort((a,b) => new Date(a.submitted_at) - new Date(b.submitted_at)).slice(-10);
+      const scoreLabels = sorted.map(r => r.employee_name.split(' ')[0] + ' - ' + (r.quiz_title||'').slice(0,8));
+      const scoreData   = sorted.map(r => r.score);
+
+      if (adminScoreChart) adminScoreChart.destroy();
+      adminScoreChart = new Chart(document.getElementById('chart-admin-scores'), {
+        type: 'line',
+        data: {
+          labels: scoreLabels,
+          datasets: [{ label: 'Score %', data: scoreData,
+            borderColor: '#3b5bdb', backgroundColor: 'rgba(59,91,219,0.1)',
+            tension: 0.4, fill: true, pointRadius: 4, pointBackgroundColor: '#3b5bdb' }]
+        },
+        options: { responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{display:false} },
+          scales:{ y:{ min:0, max:100, ticks:{callback:v=>v+'%'} }, x:{ticks:{maxRotation:30,font:{size:9}}} } }
+      });
+
+      // ML Performance Distribution donut
+      const perfCounts = { 'High Performer':0, 'Average Performer':0, 'Needs Improvement':0 };
+      results.forEach(r => { if (perfCounts[r.performance_label] !== undefined) perfCounts[r.performance_label]++; });
+      if (adminPerfChart) adminPerfChart.destroy();
+      adminPerfChart = new Chart(document.getElementById('chart-admin-perf'), {
+        type: 'doughnut',
+        data: {
+          labels: ['High', 'Average', 'Needs Work'],
+          datasets: [{ data: [perfCounts['High Performer'], perfCounts['Average Performer'], perfCounts['Needs Improvement']],
+            backgroundColor: ['#2f9e44','#f59f00','#e03131'],
+            borderWidth: 2, borderColor: '#fff' }]
+        },
+        options: { responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{ position:'bottom', labels:{font:{size:11}, padding:8} } } }
+      });
+    }
 
     const results = (recentData.results || []).slice(0, 6);
     const container = document.getElementById('recent-subs');

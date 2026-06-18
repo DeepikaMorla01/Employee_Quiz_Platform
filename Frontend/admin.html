@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>WorkEval – Admin</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
   <style>
     /* ── Extra admin styles ── */
     .sidebar { width: 200px; }
@@ -84,6 +85,17 @@
         <div class="kpi"><div class="kpi-icon">📝</div><div class="kpi-val" id="k-quiz">0</div><div class="kpi-label">Quizzes</div></div>
         <div class="kpi"><div class="kpi-icon">✅</div><div class="kpi-val" id="k-att">0</div><div class="kpi-label">Attempts</div></div>
         <div class="kpi"><div class="kpi-icon">🎯</div><div class="kpi-val" id="k-avg">–</div><div class="kpi-label">Avg Score</div></div>
+      </div>
+      <!-- Analytics Charts -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px" id="analytics-charts">
+        <div class="kpi" style="grid-column:span 2">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:12px">📈 Score Trend (All Employees)</div>
+          <div style="position:relative;height:160px"><canvas id="chart-admin-scores"></canvas></div>
+        </div>
+        <div class="kpi">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:12px">🤖 ML Performance Distribution</div>
+          <div style="position:relative;height:160px"><canvas id="chart-admin-perf"></canvas></div>
+        </div>
       </div>
       <div class="card">
         <div class="section-title" style="margin-bottom:14px">Recent Submissions</div>

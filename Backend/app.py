@@ -318,7 +318,8 @@ def submit_quiz():
 
     cur.execute(f"SELECT COUNT(*) as cnt FROM results WHERE user_id={Q} AND quiz_id={Q}",
                 (request.user_id, quiz_id))
-    attempt_num = (cur.fetchone() or {"cnt":0})["cnt"] + 1 if USE_POSTGRES else cur.fetchone()[0] + 1
+    _attempt_row = row_to_dict(cur.fetchone()) or {}
+    attempt_num = (_attempt_row.get("cnt") or 0) + 1
 
     cur.execute(f"SELECT score FROM results WHERE user_id={Q}", (request.user_id,))
     prev = [r["score"] if isinstance(r,dict) else r[0] for r in cur.fetchall()]
@@ -393,13 +394,14 @@ def admin_all_results():
     cur.execute("""
         SELECT u.id as user_id, u.name as employee_name, u.department,
                q.id as quiz_id, q.title as quiz_title,
-               MAX(r.score) as score, r.accuracy, r.time_taken,
-               r.performance_label, COUNT(r.id) as total_attempts,
+               MAX(r.score) as score, ROUND(AVG(r.accuracy),1) as accuracy,
+               ROUND(AVG(r.time_taken),1) as time_taken,
+               MAX(r.performance_label) as performance_label, COUNT(r.id) as total_attempts,
                MAX(r.submitted_at) as submitted_at
         FROM results r
         JOIN users u ON r.user_id=u.id
         JOIN quizzes q ON r.quiz_id=q.id
-        GROUP BY r.user_id,r.quiz_id,u.id,u.name,u.department,q.id,q.title,r.accuracy,r.time_taken,r.performance_label
+        GROUP BY r.user_id,r.quiz_id,u.id,u.name,u.department,q.id,q.title
         ORDER BY submitted_at DESC""")
     rows = rows_to_list(cur.fetchall()); conn.close()
     return jsonify({"results": rows})
@@ -440,7 +442,13 @@ def admin_employee_detail(emp_id):
     cur.execute(f"""
         SELECT q.id as quiz_id, q.title as quiz_title,
                COUNT(r.id) as total_attempts, MAX(r.score) as best_score,
-               AVG(r.score) as avg_score, MAX(r.submitted_at) as last_attempted
+               AVG(r.score) as avg_score, MAX(r.submitted_at) as last_attempted,
+               MAX(r.accuracy) as best_accuracy,
+               MAX(r.total_questions) as total_questions,
+               MAX(r.performance_label) as performance_label,
+               (SELECT r2.feedback FROM results r2
+                WHERE r2.user_id=r.user_id AND r2.quiz_id=r.quiz_id
+                ORDER BY r2.submitted_at DESC LIMIT 1) as latest_feedback
         FROM results r JOIN quizzes q ON r.quiz_id=q.id
         WHERE r.user_id={Q} GROUP BY q.id,q.title ORDER BY last_attempted DESC""", (emp_id,))
     quiz_summary = rows_to_list(cur.fetchall())

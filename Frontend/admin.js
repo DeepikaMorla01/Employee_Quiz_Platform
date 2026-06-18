@@ -81,10 +81,10 @@ async function loadDashboard() {
     animateCount('k-att', stats.total_attempts || 0);
 
     // ── Analytics Charts ───────────────────────────────────────────────────
-    const results = recentData.results || [];
-    if (results.length > 0) {
+    const allResults = recentData.results || [];
+    if (allResults.length > 0) {
       // Score trend — last 10 submissions sorted by date
-      const sorted = [...results].sort((a,b) => new Date(a.submitted_at) - new Date(b.submitted_at)).slice(-10);
+      const sorted = [...allResults].sort((a,b) => new Date(a.submitted_at) - new Date(b.submitted_at)).slice(-10);
       const scoreLabels = sorted.map(r => r.employee_name.split(' ')[0] + ' - ' + (r.quiz_title||'').slice(0,8));
       const scoreData   = sorted.map(r => r.score);
 
@@ -104,7 +104,7 @@ async function loadDashboard() {
 
       // ML Performance Distribution donut
       const perfCounts = { 'High Performer':0, 'Average Performer':0, 'Needs Improvement':0 };
-      results.forEach(r => { if (perfCounts[r.performance_label] !== undefined) perfCounts[r.performance_label]++; });
+      allResults.forEach(r => { if (perfCounts[r.performance_label] !== undefined) perfCounts[r.performance_label]++; });
       if (adminPerfChart) adminPerfChart.destroy();
       adminPerfChart = new Chart(document.getElementById('chart-admin-perf'), {
         type: 'doughnut',

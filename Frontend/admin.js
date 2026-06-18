@@ -60,7 +60,7 @@ function scoreColor(score) {
 
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
 
-let adminScoreChart = null, adminPerfChart = null;
+let adminScoreChart = null, adminPerfChart = null, adminQuizAvgChart = null;
 
 async function loadDashboard() {
   try {
@@ -117,6 +117,40 @@ async function loadDashboard() {
         options: { responsive:true, maintainAspectRatio:false,
           plugins:{ legend:{ position:'bottom', labels:{font:{size:11}, padding:8} } } }
       });
+
+      // ── Avg Score Per Quiz bar chart ──────────────────────────────────
+      const quizMap = {};
+      allResults.forEach(r => {
+        if (!quizMap[r.quiz_title]) quizMap[r.quiz_title] = { sum: 0, count: 0 };
+        quizMap[r.quiz_title].sum += r.score;
+        quizMap[r.quiz_title].count++;
+      });
+      const quizTitles = Object.keys(quizMap);
+      const quizAvgs = quizTitles.map(t => +(quizMap[t].sum / quizMap[t].count).toFixed(1));
+      if (adminQuizAvgChart) adminQuizAvgChart.destroy();
+      const quizAvgCtx = document.getElementById('chart-admin-quiz-avg');
+      if (quizAvgCtx && quizTitles.length) {
+        adminQuizAvgChart = new Chart(quizAvgCtx, {
+          type: 'bar',
+          data: {
+            labels: quizTitles,
+            datasets: [{
+              label: 'Avg Score %',
+              data: quizAvgs,
+              backgroundColor: quizAvgs.map(s => s >= 80 ? 'rgba(47,158,68,0.75)' : s >= 50 ? 'rgba(245,159,0,0.75)' : 'rgba(224,49,49,0.75)'),
+              borderRadius: 6
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { min: 0, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+              x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+            }
+          }
+        });
+      }
     }
 
     const results = (recentData.results || []).slice(0, 6);

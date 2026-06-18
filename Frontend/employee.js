@@ -64,28 +64,120 @@ function badgeClass(label) {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
+let scoreChart = null, perfChart = null;
+
 async function loadDashboard() {
   try {
     const res = await fetch(`${API}/my-results`, { headers: headers() });
     const data = await res.json();
     const results = data.results || [];
     animateCount('stat-taken', results.length);
+
     if (results.length) {
       const avg = (results.reduce((s, r) => s + r.score, 0) / results.length).toFixed(1);
       document.getElementById('stat-avg').textContent = avg + '%';
+
+      const best = Math.max(...results.map(r => r.score));
+      document.getElementById('stat-best').textContent = best + '%';
+
+      // ── ML Performance Banner ───────────────────────────────────────────
       const last = results[results.length - 1];
-      const lvlEl = document.getElementById('stat-level');
-      lvlEl.innerHTML = `<span class="badge ${badgeClass(last.performance_label)}">${last.performance_label}</span>`;
+      const mlLabel = last.performance_label || 'Needs Improvement';
+      const mlBanner = document.getElementById('ml-banner');
+      if (mlBanner) {
+        mlBanner.style.display = 'flex';
+        const mlLevel = document.getElementById('ml-level');
+        if (mlLevel) {
+          mlLevel.textContent = mlLabel;
+          mlLevel.className = 'ml-value ' +
+            (mlLabel === 'High Performer' ? 'high' :
+             mlLabel === 'Average Performer' ? 'avg' : 'low');
+        }
+        const mlAvgScore = document.getElementById('ml-avg-score');
+        if (mlAvgScore) mlAvgScore.textContent = avg + '%';
+      }
+
+      // ── Charts ─────────────────────────────────────────────────────────
+      const chartSection = document.getElementById('chart-section');
+      if (chartSection) chartSection.style.display = 'grid';
+
+      // Score History (last 8 attempts)
+      const sorted = [...results].sort((a, b) => new Date(a.submitted_at) - new Date(b.submitted_at)).slice(-8);
+      const scoreLabels = sorted.map(r => {
+        const d = new Date(r.submitted_at);
+        return (r.quiz_title || 'Quiz').slice(0, 10) + '\n' + d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+      });
+      const scoreData = sorted.map(r => r.score);
+
+      if (scoreChart) scoreChart.destroy();
+      const scoresCtx = document.getElementById('chart-scores');
+      if (scoresCtx) {
+        scoreChart = new Chart(scoresCtx, {
+          type: 'line',
+          data: {
+            labels: scoreLabels,
+            datasets: [{
+              label: 'Score %',
+              data: scoreData,
+              borderColor: '#3b5bdb',
+              backgroundColor: 'rgba(59,91,219,0.12)',
+              tension: 0.4,
+              fill: true,
+              pointRadius: 5,
+              pointBackgroundColor: scoreData.map(s => s >= 80 ? '#2f9e44' : s >= 50 ? '#f59f00' : '#e03131'),
+              pointBorderColor: '#fff',
+              pointBorderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { min: 0, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+              x: { ticks: { font: { size: 10 }, maxRotation: 30 }, grid: { display: false } }
+            }
+          }
+        });
+      }
+
+      // Performance Distribution donut
+      const perfCounts = { 'High Performer': 0, 'Average Performer': 0, 'Needs Improvement': 0 };
+      results.forEach(r => { if (perfCounts[r.performance_label] !== undefined) perfCounts[r.performance_label]++; });
+
+      if (perfChart) perfChart.destroy();
+      const perfCtx = document.getElementById('chart-perf');
+      if (perfCtx) {
+        perfChart = new Chart(perfCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['High', 'Average', 'Needs Work'],
+            datasets: [{
+              data: [perfCounts['High Performer'], perfCounts['Average Performer'], perfCounts['Needs Improvement']],
+              backgroundColor: ['#2f9e44', '#f59f00', '#e03131'],
+              borderWidth: 3,
+              borderColor: '#fff'
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 10 } } },
+            cutout: '62%'
+          }
+        });
+      }
     }
+
+    // ── Recent Activity Table ─────────────────────────────────────────────
     const recent = results.slice(-5).reverse();
     document.getElementById('recent-table').innerHTML = recent.length
       ? recent.map(r => `<tr>
           <td>${r.quiz_title}</td>
           <td><strong>${r.score}%</strong></td>
-          <td>${new Date(r.submitted_at).toLocaleDateString()}</td>
           <td><span class="badge ${badgeClass(r.performance_label)}">${r.performance_label}</span></td>
+          <td>${new Date(r.submitted_at).toLocaleDateString()}</td>
+          <td><button class="btn-sm btn-outline" style="padding:4px 10px;font-size:12px" onclick="startQuiz(${r.quiz_id})">Retry</button></td>
         </tr>`).join('')
-      : '<tr><td colspan="4" class="empty-state">No attempts yet.</td></tr>';
+      : '<tr><td colspan="5" class="empty-state">No attempts yet.</td></tr>';
   } catch (e) { console.error(e); }
 }
 

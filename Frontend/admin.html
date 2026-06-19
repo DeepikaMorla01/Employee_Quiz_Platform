@@ -96,10 +96,6 @@
           <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:12px">🤖 ML Performance Distribution</div>
           <div style="position:relative;height:160px"><canvas id="chart-admin-perf"></canvas></div>
         </div>
-        <div class="kpi" style="grid-column:span 3">
-          <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:12px">📊 Avg Score Per Quiz</div>
-          <div style="position:relative;height:140px"><canvas id="chart-admin-quiz-avg"></canvas></div>
-        </div>
       </div>
       <div class="card">
         <div class="section-title" style="margin-bottom:14px">Recent Submissions</div>
@@ -189,5 +185,13 @@
 
 <script src="config.js"></script>
     <script src="admin.js"></script>
+
+  <script>
+    // Keep Render backend alive by pinging every 10 minutes
+    const PING_URL = "https://workeval-backend.onrender.com/health";
+    function pingBackend() { fetch(PING_URL).catch(() => {}); }
+    pingBackend();
+    setInterval(pingBackend, 10 * 60 * 1000);
+  </script>
 </body>
 </html>

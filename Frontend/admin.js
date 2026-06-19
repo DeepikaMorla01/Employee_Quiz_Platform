@@ -60,7 +60,7 @@ function scoreColor(score) {
 
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
 
-let adminScoreChart = null, adminPerfChart = null, adminQuizAvgChart = null;
+let adminScoreChart = null, adminPerfChart = null;
 
 async function loadDashboard() {
   try {
@@ -82,83 +82,79 @@ async function loadDashboard() {
 
     // ── Analytics Charts ───────────────────────────────────────────────────
     const allResults = recentData.results || [];
-    if (allResults.length > 0) {
-      // Score trend — last 10 submissions sorted by date
-      const sorted = [...allResults].sort((a,b) => new Date(a.submitted_at) - new Date(b.submitted_at)).slice(-10);
-      const scoreLabels = sorted.map(r => r.employee_name.split(' ')[0] + ' - ' + (r.quiz_title||'').slice(0,8));
-      const scoreData   = sorted.map(r => r.score);
 
-      if (adminScoreChart) adminScoreChart.destroy();
-      adminScoreChart = new Chart(document.getElementById('chart-admin-scores'), {
-        type: 'line',
+    // Score trend — last 10 submissions sorted by date
+    const sorted = [...allResults].sort((a,b) => new Date(a.submitted_at) - new Date(b.submitted_at)).slice(-10);
+    const scoreLabels = sorted.length > 0
+      ? sorted.map(r => (r.employee_name||'').split(' ')[0] + ' - ' + (r.quiz_title||'').slice(0,8))
+      : ['No data yet'];
+    const scoreData = sorted.length > 0 ? sorted.map(r => r.score) : [0];
+
+    if (adminScoreChart) adminScoreChart.destroy();
+    adminScoreChart = new Chart(document.getElementById('chart-admin-scores'), {
+      type: 'line',
+      data: {
+        labels: scoreLabels,
+        datasets: [{ label: 'Score %', data: scoreData,
+          borderColor: '#3b5bdb', backgroundColor: 'rgba(59,91,219,0.1)',
+          tension: 0.4, fill: true, pointRadius: 4, pointBackgroundColor: '#3b5bdb' }]
+      },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false} },
+        scales:{ y:{ min:0, max:100, ticks:{callback:v=>v+'%'} }, x:{ticks:{maxRotation:30,font:{size:9}}} } }
+    });
+
+    // ML Performance Distribution donut
+    const perfCounts = { 'High Performer':0, 'Average Performer':0, 'Needs Improvement':0 };
+    allResults.forEach(r => { if (perfCounts[r.performance_label] !== undefined) perfCounts[r.performance_label]++; });
+    const perfTotal = perfCounts['High Performer'] + perfCounts['Average Performer'] + perfCounts['Needs Improvement'];
+    if (adminPerfChart) adminPerfChart.destroy();
+    adminPerfChart = new Chart(document.getElementById('chart-admin-perf'), {
+      type: 'doughnut',
+      data: {
+        labels: ['High Performer', 'Average Performer', 'Needs Improvement'],
+        datasets: [{ data: perfTotal > 0
+          ? [perfCounts['High Performer'], perfCounts['Average Performer'], perfCounts['Needs Improvement']]
+          : [1, 1, 1],
+          backgroundColor: ['#2f9e44','#f59f00','#e03131'],
+          borderWidth: 2, borderColor: '#fff' }]
+      },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'bottom', labels:{font:{size:11}, padding:8} },
+          tooltip:{ callbacks:{ label: ctx => perfTotal > 0 ? ctx.label + ': ' + ctx.raw : 'No data yet' } } } }
+    });
+
+    // Avg score per quiz bar chart
+    const quizMap = {};
+    allResults.forEach(r => {
+      if (!quizMap[r.quiz_title]) quizMap[r.quiz_title] = [];
+      quizMap[r.quiz_title].push(r.score);
+    });
+    const quizLabels = Object.keys(quizMap);
+    const quizAvgs   = quizLabels.map(t => Math.round(quizMap[t].reduce((a,b)=>a+b,0)/quizMap[t].length));
+    const quizChartEl = document.getElementById('chart-admin-quiz-avg');
+    if (quizChartEl) {
+      if (window.adminQuizChart) window.adminQuizChart.destroy();
+      window.adminQuizChart = new Chart(quizChartEl, {
+        type: 'bar',
         data: {
-          labels: scoreLabels,
-          datasets: [{ label: 'Score %', data: scoreData,
-            borderColor: '#3b5bdb', backgroundColor: 'rgba(59,91,219,0.1)',
-            tension: 0.4, fill: true, pointRadius: 4, pointBackgroundColor: '#3b5bdb' }]
+          labels: quizLabels.length > 0 ? quizLabels : ['No data yet'],
+          datasets: [{ label: 'Avg Score %', data: quizAvgs.length > 0 ? quizAvgs : [0],
+            backgroundColor: 'rgba(59,91,219,0.7)', borderRadius: 6 }]
         },
         options: { responsive:true, maintainAspectRatio:false,
           plugins:{ legend:{display:false} },
-          scales:{ y:{ min:0, max:100, ticks:{callback:v=>v+'%'} }, x:{ticks:{maxRotation:30,font:{size:9}}} } }
+          scales:{ y:{ min:0, max:100, ticks:{callback:v=>v+'%'} } } }
       });
-
-      // ML Performance Distribution donut
-      const perfCounts = { 'High Performer':0, 'Average Performer':0, 'Needs Improvement':0 };
-      allResults.forEach(r => { if (perfCounts[r.performance_label] !== undefined) perfCounts[r.performance_label]++; });
-      if (adminPerfChart) adminPerfChart.destroy();
-      adminPerfChart = new Chart(document.getElementById('chart-admin-perf'), {
-        type: 'doughnut',
-        data: {
-          labels: ['High', 'Average', 'Needs Work'],
-          datasets: [{ data: [perfCounts['High Performer'], perfCounts['Average Performer'], perfCounts['Needs Improvement']],
-            backgroundColor: ['#2f9e44','#f59f00','#e03131'],
-            borderWidth: 2, borderColor: '#fff' }]
-        },
-        options: { responsive:true, maintainAspectRatio:false,
-          plugins:{ legend:{ position:'bottom', labels:{font:{size:11}, padding:8} } } }
-      });
-
-      // ── Avg Score Per Quiz bar chart ──────────────────────────────────
-      const quizMap = {};
-      allResults.forEach(r => {
-        if (!quizMap[r.quiz_title]) quizMap[r.quiz_title] = { sum: 0, count: 0 };
-        quizMap[r.quiz_title].sum += r.score;
-        quizMap[r.quiz_title].count++;
-      });
-      const quizTitles = Object.keys(quizMap);
-      const quizAvgs = quizTitles.map(t => +(quizMap[t].sum / quizMap[t].count).toFixed(1));
-      if (adminQuizAvgChart) adminQuizAvgChart.destroy();
-      const quizAvgCtx = document.getElementById('chart-admin-quiz-avg');
-      if (quizAvgCtx && quizTitles.length) {
-        adminQuizAvgChart = new Chart(quizAvgCtx, {
-          type: 'bar',
-          data: {
-            labels: quizTitles,
-            datasets: [{
-              label: 'Avg Score %',
-              data: quizAvgs,
-              backgroundColor: quizAvgs.map(s => s >= 80 ? 'rgba(47,158,68,0.75)' : s >= 50 ? 'rgba(245,159,0,0.75)' : 'rgba(224,49,49,0.75)'),
-              borderRadius: 6
-            }]
-          },
-          options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-              y: { min: 0, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
-              x: { ticks: { font: { size: 11 } }, grid: { display: false } }
-            }
-          }
-        });
-      }
     }
 
-    const results = (recentData.results || []).slice(0, 6);
+    // Recent submissions
+    const recentResults = allResults.slice(0, 6);
     const container = document.getElementById('recent-subs');
-    if (results.length === 0) {
-      container.innerHTML = '<div class="empty-state"><span>📭</span>No submissions yet.</div>';
+    if (recentResults.length === 0) {
+      container.innerHTML = '<div class="empty-state"><span>📭</span>No submissions yet. Ask employees to take a quiz!</div>';
     } else {
-      container.innerHTML = results.map(r => `
+      container.innerHTML = recentResults.map(r => `
         <div class="sub-card">
           <div class="sub-avatar">${initials(r.employee_name)}</div>
           <div>
@@ -172,7 +168,7 @@ async function loadDashboard() {
           </div>
         </div>`).join('');
     }
-  } catch (e) { console.error(e); }
+  } catch (e) { console.error('[Dashboard]', e); }
 }
 
 // ── QUIZZES ──────────────────────────────────────────────────────────────────

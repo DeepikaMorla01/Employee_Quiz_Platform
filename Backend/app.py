@@ -413,8 +413,8 @@ def admin_all_results():
             FROM results r
             JOIN users u ON r.user_id=u.id
             JOIN quizzes q ON r.quiz_id=q.id
-            GROUP BY r.user_id,r.quiz_id,u.id,u.name,u.department,q.id,q.title
-            ORDER BY submitted_at DESC""")
+            GROUP BY u.id, u.name, u.department, q.id, q.title
+            ORDER BY MAX(r.submitted_at) DESC""")
         rows = rows_to_list(cur.fetchall()); conn.close()
         return jsonify({"results": rows})
     except Exception as e:
@@ -467,12 +467,10 @@ def admin_employee_detail(emp_id):
                    AVG(r.score) as avg_score, MAX(r.submitted_at) as last_attempted,
                    MAX(r.accuracy) as best_accuracy,
                    MAX(r.total_questions) as total_questions,
-                   MAX(r.performance_label) as performance_label,
-                   (SELECT r2.feedback FROM results r2
-                    WHERE r2.user_id=r.user_id AND r2.quiz_id=r.quiz_id
-                    ORDER BY r2.submitted_at DESC LIMIT 1) as latest_feedback
+                   MAX(r.performance_label) as performance_label
             FROM results r JOIN quizzes q ON r.quiz_id=q.id
-            WHERE r.user_id={Q} GROUP BY q.id,q.title ORDER BY last_attempted DESC""", (emp_id,))
+            WHERE r.user_id={Q} GROUP BY q.id, q.title
+            ORDER BY MAX(r.submitted_at) DESC""", (emp_id,))
         quiz_summary = rows_to_list(cur.fetchall())
         conn.close()
         return jsonify({

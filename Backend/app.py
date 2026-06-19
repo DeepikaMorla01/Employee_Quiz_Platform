@@ -630,6 +630,16 @@ def ensure_db():
     """Initialize DB tables on first request if not already done."""
     pass  # init_db called at startup below
 
+# Global error handler to return JSON on unexpected exceptions
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    tb = traceback.format_exc()
+    print(f"[error] {e}\n{tb}")
+    if os.environ.get("FLASK_DEBUG","false").lower() == "true":
+        return jsonify({"error": str(e), "trace": tb}), 500
+    return jsonify({"error":"Internal server error"}), 500
+
 if __name__ == "__main__":
     init_db()
     port  = int(os.environ.get("PORT", os.environ.get("FLASK_PORT", 5000)))

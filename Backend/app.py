@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
-import hashlib, jwt, os, datetime, json
+import hashlib, jwt, os, datetime, json, decimal
 from functools import wraps
 from dotenv import load_dotenv
 
@@ -52,12 +52,22 @@ else:
     Q = "?"    # query placeholder
 
 
+def normalize_value(value):
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    if isinstance(value, datetime.datetime):
+        return value.isoformat()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    return value
+
+
 def row_to_dict(row):
     if row is None:
         return None
     if isinstance(row, dict):
-        return dict(row)
-    return dict(row)
+        return {k: normalize_value(v) for k, v in row.items()}
+    return {k: normalize_value(v) for k, v in dict(row).items()}
 
 
 def rows_to_list(rows):

@@ -165,7 +165,12 @@ def init_db():
         """)
         for col in ["correct_count INTEGER DEFAULT 0",
                     "total_questions INTEGER DEFAULT 0",
-                    "user_answers TEXT DEFAULT '{}'"]:
+                    "user_answers TEXT DEFAULT '{}'",
+                    "performance_label TEXT",
+                    "feedback TEXT",
+                    "accuracy REAL DEFAULT 0",
+                    "time_taken REAL DEFAULT 0",
+                    "attempt_number INTEGER DEFAULT 1"]:
             try: cur.execute(f"ALTER TABLE results ADD COLUMN {col}")
             except: pass
 
@@ -403,18 +408,36 @@ def admin_stats():
 def admin_all_results():
     try:
         conn = get_db(); cur = conn.cursor()
-        cur.execute("""
-            SELECT u.id as user_id, u.name as employee_name, u.department,
-                   q.id as quiz_id, q.title as quiz_title,
-                   MAX(r.score) as score, ROUND(AVG(r.accuracy),1) as accuracy,
-                   ROUND(AVG(r.time_taken),1) as time_taken,
-                   MAX(r.performance_label) as performance_label, COUNT(r.id) as total_attempts,
-                   MAX(r.submitted_at) as submitted_at
-            FROM results r
-            JOIN users u ON r.user_id=u.id
-            JOIN quizzes q ON r.quiz_id=q.id
-            GROUP BY u.id, u.name, u.department, q.id, q.title
-            ORDER BY MAX(r.submitted_at) DESC""")
+        if USE_POSTGRES:
+            cur.execute("""
+                SELECT u.id as user_id, u.name as employee_name, u.department,
+                       q.id as quiz_id, q.title as quiz_title,
+                       MAX(r.score) as score,
+                       ROUND(COALESCE(AVG(r.accuracy), 0)::numeric, 1) as accuracy,
+                       ROUND(COALESCE(AVG(r.time_taken), 0)::numeric, 1) as time_taken,
+                       MAX(COALESCE(r.performance_label, 'N/A')) as performance_label,
+                       COUNT(r.id) as total_attempts,
+                       MAX(r.submitted_at) as submitted_at
+                FROM results r
+                JOIN users u ON r.user_id=u.id
+                JOIN quizzes q ON r.quiz_id=q.id
+                GROUP BY u.id, u.name, u.department, q.id, q.title
+                ORDER BY MAX(r.submitted_at) DESC""")
+        else:
+            cur.execute("""
+                SELECT u.id as user_id, u.name as employee_name, u.department,
+                       q.id as quiz_id, q.title as quiz_title,
+                       MAX(r.score) as score,
+                       ROUND(COALESCE(AVG(r.accuracy), 0), 1) as accuracy,
+                       ROUND(COALESCE(AVG(r.time_taken), 0), 1) as time_taken,
+                       MAX(COALESCE(r.performance_label, 'N/A')) as performance_label,
+                       COUNT(r.id) as total_attempts,
+                       MAX(r.submitted_at) as submitted_at
+                FROM results r
+                JOIN users u ON r.user_id=u.id
+                JOIN quizzes q ON r.quiz_id=q.id
+                GROUP BY u.id, u.name, u.department, q.id, q.title
+                ORDER BY MAX(r.submitted_at) DESC""")
         rows = rows_to_list(cur.fetchall()); conn.close()
         return jsonify({"results": rows})
     except Exception as e:

@@ -174,27 +174,108 @@ async function loadDashboard() {
 // ── QUIZZES ──────────────────────────────────────────────────────────────────
 
 async function loadAdminQuizzes() {
+  const container = document.getElementById('quiz-list');
+  container.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">Loading quizzes…</div>';
   try {
-    const res = await fetch(`${API}/quizzes`, { headers: h() });
-    const data = await res.json();
-    const quizzes = data.quizzes || [];
-    const container = document.getElementById('quiz-list');
+    // Fetch quizzes and all results in parallel
+    const [quizRes, resultsRes] = await Promise.all([
+      fetch(`${API}/quizzes`, { headers: h() }),
+      fetch(`${API}/admin/all-results`, { headers: h() })
+    ]);
+    const quizData    = await quizRes.json();
+    const resultsData = await resultsRes.json();
+    const quizzes = quizData.quizzes   || [];
+    const results = resultsData.results || [];
+
     if (quizzes.length === 0) {
       container.innerHTML = '<div class="empty-state"><span>📭</span>No quizzes yet.</div>';
       return;
     }
-    container.innerHTML = quizzes.map(q => `
-      <div class="quiz-card">
-        <div class="quiz-card-info">
-          <h4>${q.title}</h4>
-          <p>${q.description || 'No description'} &nbsp;·&nbsp; <strong>${q.question_count}</strong> questions</p>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn-sm btn-outline" onclick="editQuiz(${q.id})">✏️ Edit</button>
-          <button class="btn-sm btn-red" onclick="deleteQuiz(${q.id})">Delete</button>
-        </div>
-      </div>`).join('');
-  } catch (e) { console.error(e); }
+
+    // Group results by quiz_id
+    const byQuiz = {};
+    results.forEach(r => {
+      if (!byQuiz[r.quiz_id]) byQuiz[r.quiz_id] = [];
+      byQuiz[r.quiz_id].push(r);
+    });
+
+    container.innerHTML = quizzes.map(q => {
+      const qResults = byQuiz[q.id] || [];
+      const totalAttempts = qResults.reduce((s, r) => s + (r.total_attempts || 1), 0);
+      const avgScore = qResults.length
+        ? Math.round(qResults.reduce((s, r) => s + r.score, 0) / qResults.length)
+        : null;
+
+      // Build employee rows for this quiz
+      const empRows = qResults.length === 0
+        ? `<tr><td colspan="6" style="text-align:center;padding:14px;color:var(--muted);font-size:13px">No employees have taken this quiz yet.</td></tr>`
+        : qResults.map(r => `
+            <tr style="font-size:13px">
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:28px;height:28px;border-radius:50%;background:var(--primary-light);color:var(--primary);font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${initials(r.employee_name)}</div>
+                  <div>
+                    <div style="font-weight:600">${r.employee_name}</div>
+                    <div style="font-size:11px;color:var(--muted)">${r.department || '–'}</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="score-pill" style="background:${scoreColor(r.score)}22;color:${scoreColor(r.score)};font-weight:700">${r.score}%</span></td>
+              <td>${r.accuracy != null ? r.accuracy + '%' : '–'}</td>
+              <td>${r.time_taken != null ? r.time_taken + ' min' : '–'}</td>
+              <td><span class="badge ${bc(r.performance_label)}">${r.performance_label || '–'}</span></td>
+              <td style="text-align:center;color:var(--muted)">${r.total_attempts || 1}</td>
+            </tr>`).join('');
+
+      const avgBadge = avgScore != null
+        ? `<span style="font-size:12px;font-weight:700;color:${scoreColor(avgScore)};background:${scoreColor(avgScore)}18;padding:3px 10px;border-radius:99px;margin-left:10px">Avg ${avgScore}%</span>`
+        : '';
+
+      const uid = 'quiz-emp-' + q.id;
+      return `
+        <div class="quiz-card" style="flex-direction:column;align-items:stretch;gap:0;padding:0;overflow:hidden">
+          <!-- Quiz header row -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;gap:12px">
+            <div class="quiz-card-info" style="flex:1">
+              <h4 style="margin:0">${q.title} ${avgBadge}</h4>
+              <p style="margin:4px 0 0">${q.description || 'No description'} &nbsp;·&nbsp; <strong>${q.question_count}</strong> questions &nbsp;·&nbsp; <strong>${qResults.length}</strong> employee${qResults.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <strong>${totalAttempts}</strong> attempt${totalAttempts !== 1 ? 's' : ''}</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0;align-items:center">
+              <button class="btn-sm btn-outline" style="font-size:12px" onclick="toggleQuizResults('${uid}', this)">👁 Show Results</button>
+              <button class="btn-sm btn-outline" onclick="editQuiz(${q.id})">✏️ Edit</button>
+              <button class="btn-sm btn-red" onclick="deleteQuiz(${q.id})">Delete</button>
+            </div>
+          </div>
+
+          <!-- Collapsible employee results panel -->
+          <div id="${uid}" style="display:none;border-top:1px solid var(--border);background:#fafbff">
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse">
+                <thead>
+                  <tr style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);background:#f1f3f8;letter-spacing:.4px">
+                    <th style="padding:10px 16px;text-align:left">Employee</th>
+                    <th style="padding:10px 12px;text-align:left">Best Score</th>
+                    <th style="padding:10px 12px;text-align:left">Accuracy</th>
+                    <th style="padding:10px 12px;text-align:left">Time</th>
+                    <th style="padding:10px 12px;text-align:left">Performance</th>
+                    <th style="padding:10px 12px;text-align:center">Attempts</th>
+                  </tr>
+                </thead>
+                <tbody>${empRows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) { console.error(e); container.innerHTML = '<div class="empty-state">Failed to load quizzes.</div>'; }
+}
+
+function toggleQuizResults(uid, btn) {
+  const panel = document.getElementById(uid);
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '👁 Show Results' : '🙈 Hide Results';
 }
 
 function openCreateQuizModal() {

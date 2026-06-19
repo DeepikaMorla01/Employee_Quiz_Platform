@@ -392,7 +392,8 @@ def admin_stats():
     cur.execute("SELECT COUNT(*) as c FROM results")
     total_att = (cur.fetchone() or {"c":0})["c"]
     cur.execute("SELECT AVG(score) as a FROM results")
-    avg = (cur.fetchone() or {"a":None})["a"]
+    avg_row = cur.fetchone() or {"a":None}
+    avg = normalize_value(avg_row["a"]) if avg_row["a"] else None
     conn.close()
     return jsonify({"total_employees":total_emp,"total_quizzes":total_q,
                     "total_attempts":total_att,"avg_score":round(avg,1) if avg else None})
@@ -400,77 +401,92 @@ def admin_stats():
 @app.route("/admin/all-results", methods=["GET"])
 @require_admin
 def admin_all_results():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("""
-        SELECT u.id as user_id, u.name as employee_name, u.department,
-               q.id as quiz_id, q.title as quiz_title,
-               MAX(r.score) as score, ROUND(AVG(r.accuracy),1) as accuracy,
-               ROUND(AVG(r.time_taken),1) as time_taken,
-               MAX(r.performance_label) as performance_label, COUNT(r.id) as total_attempts,
-               MAX(r.submitted_at) as submitted_at
-        FROM results r
-        JOIN users u ON r.user_id=u.id
-        JOIN quizzes q ON r.quiz_id=q.id
-        GROUP BY r.user_id,r.quiz_id,u.id,u.name,u.department,q.id,q.title
-        ORDER BY submitted_at DESC""")
-    rows = rows_to_list(cur.fetchall()); conn.close()
-    return jsonify({"results": rows})
+    try:
+        conn = get_db(); cur = conn.cursor()
+        cur.execute("""
+            SELECT u.id as user_id, u.name as employee_name, u.department,
+                   q.id as quiz_id, q.title as quiz_title,
+                   MAX(r.score) as score, ROUND(AVG(r.accuracy),1) as accuracy,
+                   ROUND(AVG(r.time_taken),1) as time_taken,
+                   MAX(r.performance_label) as performance_label, COUNT(r.id) as total_attempts,
+                   MAX(r.submitted_at) as submitted_at
+            FROM results r
+            JOIN users u ON r.user_id=u.id
+            JOIN quizzes q ON r.quiz_id=q.id
+            GROUP BY r.user_id,r.quiz_id,u.id,u.name,u.department,q.id,q.title
+            ORDER BY submitted_at DESC""")
+        rows = rows_to_list(cur.fetchall()); conn.close()
+        return jsonify({"results": rows})
+    except Exception as e:
+        import traceback
+        print(f"[admin_all_results] Error: {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/admin/employees", methods=["GET"])
 @require_admin
 def admin_employees():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE role != 'admin'")
-    emps = rows_to_list(cur.fetchall())
-    result = []
-    for e in emps:
-        cur.execute(f"SELECT COUNT(*) as cnt, AVG(score) as avg FROM results WHERE user_id={Q}", (e["id"],))
-        stats = row_to_dict(cur.fetchone()) or {"cnt":0,"avg":None}
-        cur.execute(f"SELECT performance_label FROM results WHERE user_id={Q} ORDER BY submitted_at DESC LIMIT 1", (e["id"],))
-        last = row_to_dict(cur.fetchone())
-        result.append({"id":e["id"],"name":e["name"],"email":e["email"],
-                       "department":e["department"],
-                       "quiz_count": stats.get("cnt") or 0,
-                       "avg_score": round(stats["avg"],1) if stats.get("avg") else None,
-                       "performance_label": last["performance_label"] if last else None})
-    conn.close()
-    return jsonify({"employees": result})
+    try:
+        conn = get_db(); cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE role != 'admin'")
+        emps = rows_to_list(cur.fetchall())
+        result = []
+        for e in emps:
+            cur.execute(f"SELECT COUNT(*) as cnt, AVG(score) as avg FROM results WHERE user_id={Q}", (e["id"],))
+            stats = row_to_dict(cur.fetchone()) or {"cnt":0,"avg":None}
+            cur.execute(f"SELECT performance_label FROM results WHERE user_id={Q} ORDER BY submitted_at DESC LIMIT 1", (e["id"],))
+            last = row_to_dict(cur.fetchone())
+            result.append({"id":e["id"],"name":e["name"],"email":e["email"],
+                           "department":e["department"],
+                           "quiz_count": stats.get("cnt") or 0,
+                           "avg_score": round(stats["avg"],1) if stats.get("avg") else None,
+                           "performance_label": last["performance_label"] if last else None})
+        conn.close()
+        return jsonify({"employees": result})
+    except Exception as e:
+        import traceback
+        print(f"[admin_employees] Error: {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/admin/employee/<int:emp_id>", methods=["GET"])
 @require_admin
 def admin_employee_detail(emp_id):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute(f"SELECT * FROM users WHERE id={Q}", (emp_id,))
-    emp = row_to_dict(cur.fetchone())
-    if not emp:
+    try:
+        conn = get_db(); cur = conn.cursor()
+        cur.execute(f"SELECT * FROM users WHERE id={Q}", (emp_id,))
+        emp = row_to_dict(cur.fetchone())
+        if not emp:
+            conn.close()
+            return jsonify({"error":"Employee not found"}), 404
+        cur.execute(f"SELECT COUNT(*) as total_attempts, AVG(score) as avg_score FROM results WHERE user_id={Q}", (emp_id,))
+        overall = row_to_dict(cur.fetchone()) or {}
+        cur.execute(f"SELECT performance_label FROM results WHERE user_id={Q} ORDER BY submitted_at DESC LIMIT 1", (emp_id,))
+        last_label = row_to_dict(cur.fetchone())
+        cur.execute(f"""
+            SELECT q.id as quiz_id, q.title as quiz_title,
+                   COUNT(r.id) as total_attempts, MAX(r.score) as best_score,
+                   AVG(r.score) as avg_score, MAX(r.submitted_at) as last_attempted,
+                   MAX(r.accuracy) as best_accuracy,
+                   MAX(r.total_questions) as total_questions,
+                   MAX(r.performance_label) as performance_label,
+                   (SELECT r2.feedback FROM results r2
+                    WHERE r2.user_id=r.user_id AND r2.quiz_id=r.quiz_id
+                    ORDER BY r2.submitted_at DESC LIMIT 1) as latest_feedback
+            FROM results r JOIN quizzes q ON r.quiz_id=q.id
+            WHERE r.user_id={Q} GROUP BY q.id,q.title ORDER BY last_attempted DESC""", (emp_id,))
+        quiz_summary = rows_to_list(cur.fetchall())
         conn.close()
-        return jsonify({"error":"Employee not found"}), 404
-    cur.execute(f"SELECT COUNT(*) as total_attempts, AVG(score) as avg_score FROM results WHERE user_id={Q}", (emp_id,))
-    overall = row_to_dict(cur.fetchone()) or {}
-    cur.execute(f"SELECT performance_label FROM results WHERE user_id={Q} ORDER BY submitted_at DESC LIMIT 1", (emp_id,))
-    last_label = row_to_dict(cur.fetchone())
-    cur.execute(f"""
-        SELECT q.id as quiz_id, q.title as quiz_title,
-               COUNT(r.id) as total_attempts, MAX(r.score) as best_score,
-               AVG(r.score) as avg_score, MAX(r.submitted_at) as last_attempted,
-               MAX(r.accuracy) as best_accuracy,
-               MAX(r.total_questions) as total_questions,
-               MAX(r.performance_label) as performance_label,
-               (SELECT r2.feedback FROM results r2
-                WHERE r2.user_id=r.user_id AND r2.quiz_id=r.quiz_id
-                ORDER BY r2.submitted_at DESC LIMIT 1) as latest_feedback
-        FROM results r JOIN quizzes q ON r.quiz_id=q.id
-        WHERE r.user_id={Q} GROUP BY q.id,q.title ORDER BY last_attempted DESC""", (emp_id,))
-    quiz_summary = rows_to_list(cur.fetchall())
-    conn.close()
-    return jsonify({
-        "employee":{"id":emp["id"],"name":emp["name"],"email":emp["email"],"department":emp["department"]},
-        "overall":{"total_attempts":overall.get("total_attempts") or 0,
-                   "avg_score":round(overall["avg_score"],1) if overall.get("avg_score") else None,
-                   "performance_label":last_label["performance_label"] if last_label else None,
-                   "unique_quizzes":len(quiz_summary)},
-        "quiz_summary": quiz_summary
-    })
+        return jsonify({
+            "employee":{"id":emp["id"],"name":emp["name"],"email":emp["email"],"department":emp["department"]},
+            "overall":{"total_attempts":overall.get("total_attempts") or 0,
+                       "avg_score":round(overall["avg_score"],1) if overall.get("avg_score") else None,
+                       "performance_label":last_label["performance_label"] if last_label else None,
+                       "unique_quizzes":len(quiz_summary)},
+            "quiz_summary": quiz_summary
+        })
+    except Exception as e:
+        import traceback
+        print(f"[admin_employee_detail] Error: {e}\n{traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/admin/delete-employee/<int:emp_id>", methods=["DELETE"])
 @require_admin
